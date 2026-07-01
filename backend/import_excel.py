@@ -3,12 +3,6 @@ from database import SessionLocal
 from models import Account, Entrata, Uscita, Transazione
 from datetime import date
 
-# ─── Conti immobile da escludere ───────────────────────────────────────────
-CONTI_IMMOBILE = {
-    "app pan10", "app delp7", "app fer11", "app ace54",
-    "app fras31", "app cast42", "app ana10", "kes46", "app kes46"
-}
-
 # ─── Mappatura categorie conti (normalizzati in minuscolo) ─────────────────
 # Aggiorniamo insieme dopo aver visto la lista reale dei conti
 CATEGORIA_CONTI = {
@@ -65,7 +59,7 @@ def import_excel(path):
             r for r in rows
             if not r[5]  # Prev vuoto
             and r[6]     # ha un conto
-            and normalizza_conto(r[6]) not in CONTI_IMMOBILE
+            and not normalizza_conto(r[6]).startswith("app")
         ]
 
         # Conti distinti
