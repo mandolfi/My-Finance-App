@@ -7,11 +7,11 @@ from datetime import date
 # Aggiorniamo insieme dopo aver visto la lista reale dei conti
 CATEGORIA_CONTI = {
     "liquidità": [
-        "marco cc ger", "marco cc ita", "marco ingdiba", "marco risp",
-        "linda cc ger", "linda cc ita", "linda ingdiba", "linda risp",
+        "marco cc ger", "marco cc ita", "marco cc ingdiba", "marco cc risp",
+        "marco cc risp ingdiba", "marco libretto", "marco portafoglio",
+        "linda cc ger", "linda cc ingdiba", "linda cc risp",
+        "linda cc risp ingdiba", "linda portafoglio",
         "conto comune", "conto puntino", "conto virgola",
-        "marco libretto", "linda libretto",
-        "marco portafoglio", "linda portafoglio",
         "cassa anna", "tagesgeld",
     ],
     "investimento": [
