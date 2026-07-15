@@ -1,20 +1,17 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+from sqlalchemy import func, extract, or_
+from database import get_db
+from models import Account, Entrata, Uscita, Transazione
+from datetime import date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from io import BytesIO
 
-from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
-from database import get_db
-from models import Account, Entrata, Uscita, Transazione
-from datetime import date
-
 app = FastAPI(title="Patrimonio API", version="1.0")
 
-# Permette al frontend (React) di chiamare le API da un dominio diverso
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,77 +19,119 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Filtro standard: solo transazioni reali (Prev vuoto o "chiusure")
+def filtro_reali(query):
+    return query.filter(or_(Transazione.prev.is_(None), Transazione.prev == "chiusure"))
+
+
 # ── ACCOUNTS ────────────────────────────────────────────────────────────────
 
 @app.get("/accounts")
 def get_accounts(db: Session = Depends(get_db)):
     accounts = db.query(Account).order_by(Account.categoria, Account.nome_conto).all()
-    return [
-        {"id": a.id, "nome": a.nome_conto, "categoria": a.categoria}
-        for a in accounts
-    ]
+    return [{"id": a.id, "nome": a.nome_conto, "categoria": a.categoria} for a in accounts]
+
+
+@app.get("/accounts/saldi")
+def get_saldi(db: Session = Depends(get_db)):
+    DATA_INIZIO_SALDI = date(2023, 1, 1)
+    accounts = db.query(Account).order_by(Account.categoria, Account.nome_conto).all()
+    risultati = []
+
+    for a in accounts:
+        query = filtro_reali(db.query(func.sum(Transazione.importo)).filter(
+            Transazione.account_id == a.id,
+            Transazione.data >= DATA_INIZIO_SALDI,
+        ))
+        saldo = query.scalar() or 0
+
+        risultati.append({
+            "id": a.id,
+            "nome": a.nome_conto,
+            "categoria": a.categoria,
+            "saldo": round(float(saldo), 2),
+        })
+
+    patrimonio_liquido = sum(
+        r["saldo"] for r in risultati
+        if r["categoria"] not in ("debito", "carta di credito", "immobili")
+    )
+    valore_immobili = sum(
+        r["saldo"] for r in risultati if r["categoria"] == "immobili"
+    )
+    debiti = sum(
+        r["saldo"] for r in risultati
+        if r["categoria"] in ("debito", "carta di credito")
+    )
+    patrimonio_totale = patrimonio_liquido + valore_immobili + debiti
+
+    return {
+        "conti": risultati,
+        "patrimonio_liquido": round(patrimonio_liquido, 2),
+        "valore_immobili": round(valore_immobili, 2),
+        "totale_debiti": round(debiti, 2),
+        "patrimonio_netto_totale": round(patrimonio_totale, 2),
+    }
+
 
 # ── DASHBOARD SUMMARY ───────────────────────────────────────────────────────
 
 @app.get("/dashboard/summary")
 def get_summary(anno: int = None, mese: int = None, db: Session = Depends(get_db)):
-    # Default: mese corrente
     oggi = date.today()
     anno = anno or oggi.year
     mese = mese or oggi.month
 
-    base = db.query(Transazione).filter(
+    base = filtro_reali(db.query(Transazione).filter(
         extract("year", Transazione.data) == anno,
         extract("month", Transazione.data) == mese,
-    )
+    ))
 
-    totale_entrate = base.filter(
-        Transazione.direzione == "Entrata"
-    ).with_entities(func.sum(Transazione.importo)).scalar() or 0
+    totale_entrate = base.filter(Transazione.direzione == "Entrata")\
+        .with_entities(func.sum(Transazione.importo)).scalar() or 0
+    totale_uscite_raw = base.filter(Transazione.direzione == "Uscita")\
+        .with_entities(func.sum(Transazione.importo)).scalar() or 0
 
-    totale_uscite = base.filter(
-        Transazione.direzione == "Uscita"
-    ).with_entities(func.sum(Transazione.importo)).scalar() or 0
-
-    risparmio = totale_entrate - totale_uscite
-    tasso_risparmio = (risparmio / totale_entrate * 100) if totale_entrate > 0 else 0
+    # Le uscite in DB hanno segno negativo; per leggibilità mostriamo un numero positivo
+    totale_uscite = abs(float(totale_uscite_raw))
+    risparmio = float(totale_entrate) - totale_uscite
+    tasso_risparmio = (risparmio / float(totale_entrate) * 100) if totale_entrate else 0
 
     return {
         "anno": anno,
         "mese": mese,
         "totale_entrate": round(float(totale_entrate), 2),
-        "totale_uscite": round(float(totale_uscite), 2),
-        "risparmio": round(float(risparmio), 2),
-        "tasso_risparmio": round(float(tasso_risparmio), 1),
+        "totale_uscite": round(totale_uscite, 2),
+        "risparmio": round(risparmio, 2),
+        "tasso_risparmio": round(tasso_risparmio, 1),
     }
 
-# ── CASHFLOW ULTIMI 6 MESI ──────────────────────────────────────────────────
+
+# ── CASHFLOW ULTIMI MESI ─────────────────────────────────────────────────────
 
 @app.get("/dashboard/cashflow")
 def get_cashflow(db: Session = Depends(get_db)):
-    risultati = db.query(
+    query = filtro_reali(db.query(
         extract("year", Transazione.data).label("anno"),
         extract("month", Transazione.data).label("mese"),
         Transazione.direzione,
         func.sum(Transazione.importo).label("totale"),
-    ).group_by("anno", "mese", Transazione.direzione)\
-     .order_by("anno", "mese")\
-     .all()
+    )).group_by("anno", "mese", Transazione.direzione).order_by("anno", "mese")
 
-    # Costruiamo un dizionario anno-mese -> {entrate, uscite}
     cashflow = {}
-    for r in risultati:
+    for r in query.all():
         chiave = f"{int(r.anno)}-{int(r.mese):02d}"
         if chiave not in cashflow:
             cashflow[chiave] = {"periodo": chiave, "entrate": 0, "uscite": 0}
         if r.direzione == "Entrata":
             cashflow[chiave]["entrate"] = round(float(r.totale), 2)
         else:
-            cashflow[chiave]["uscite"] = round(float(r.totale), 2)
+            cashflow[chiave]["uscite"] = round(abs(float(r.totale)), 2)
 
     return sorted(cashflow.values(), key=lambda x: x["periodo"])
 
-# ── TRANSAZIONI ─────────────────────────────────────────────────────────────
+
+# ── TRANSAZIONI ───────────────────────────────────────────────────────────────
 
 @app.get("/transazioni")
 def get_transazioni(
@@ -104,7 +143,7 @@ def get_transazioni(
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
-    query = db.query(Transazione)
+    query = filtro_reali(db.query(Transazione))
 
     if anno:
         query = query.filter(extract("year", Transazione.data) == anno)
@@ -136,7 +175,8 @@ def get_transazioni(
         ],
     }
 
-# ── ENTRATE E USCITE PER CATEGORIA ─────────────────────────────────────────
+
+# ── PER CATEGORIA ─────────────────────────────────────────────────────────────
 
 @app.get("/dashboard/per-categoria")
 def get_per_categoria(anno: int = None, mese: int = None, db: Session = Depends(get_db)):
@@ -144,29 +184,25 @@ def get_per_categoria(anno: int = None, mese: int = None, db: Session = Depends(
     anno = anno or oggi.year
     mese = mese or oggi.month
 
-    # Uscite per categoria
-    uscite = db.query(
+    uscite = filtro_reali(db.query(
         Uscita.categoria,
         func.sum(Transazione.importo).label("totale")
-    ).join(Transazione, Transazione.uscita_id == Uscita.id)\
-     .filter(
+    ).join(Transazione, Transazione.uscita_id == Uscita.id)).filter(
         extract("year", Transazione.data) == anno,
         extract("month", Transazione.data) == mese,
-     ).group_by(Uscita.categoria).all()
+    ).group_by(Uscita.categoria).all()
 
-    # Entrate per categoria
-    entrate = db.query(
+    entrate = filtro_reali(db.query(
         Entrata.categoria,
         func.sum(Transazione.importo).label("totale")
-    ).join(Transazione, Transazione.entrata_id == Entrata.id)\
-     .filter(
+    ).join(Transazione, Transazione.entrata_id == Entrata.id)).filter(
         extract("year", Transazione.data) == anno,
         extract("month", Transazione.data) == mese,
-     ).group_by(Entrata.categoria).all()
+    ).group_by(Entrata.categoria).all()
 
     return {
         "uscite_per_categoria": [
-            {"categoria": r.categoria, "totale": round(float(r.totale), 2)}
+            {"categoria": r.categoria, "totale": round(abs(float(r.totale)), 2)}
             for r in uscite
         ],
         "entrate_per_categoria": [
@@ -176,21 +212,14 @@ def get_per_categoria(anno: int = None, mese: int = None, db: Session = Depends(
     }
 
 
-
 # ── EXPORT EXCEL ────────────────────────────────────────────────────────────
 
 @app.get("/export/excel")
-def export_excel(
-    anno: int = None,
-    db: Session = Depends(get_db)
-):
+def export_excel(anno: int = None, db: Session = Depends(get_db)):
     wb = openpyxl.Workbook()
-
-    # ── Foglio 1: Transazioni ──────────────────────────────────────────────
     ws_tx = wb.active
     ws_tx.title = "Transazioni"
 
-    # Stile intestazioni
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(fill_type="solid", fgColor="1B3A36")
 
@@ -201,75 +230,34 @@ def export_excel(
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
 
-    # Dati transazioni
-    query = db.query(Transazione)
+    query = filtro_reali(db.query(Transazione))
     if anno:
         query = query.filter(extract("year", Transazione.data) == anno)
     transazioni = query.order_by(Transazione.data.desc()).all()
 
     for row, t in enumerate(transazioni, 2):
         causale = t.entrata.nome_entrata if t.entrata else t.uscita.nome_uscita if t.uscita else ""
-        importo = float(t.importo) if t.direzione == "Entrata" else -float(t.importo)
         ws_tx.cell(row=row, column=1, value=t.data.isoformat())
         ws_tx.cell(row=row, column=2, value=t.account.nome_conto)
         ws_tx.cell(row=row, column=3, value=t.direzione)
         ws_tx.cell(row=row, column=4, value=causale)
         ws_tx.cell(row=row, column=5, value=t.descrizione)
-        ws_tx.cell(row=row, column=6, value=importo)
+        ws_tx.cell(row=row, column=6, value=float(t.importo))
 
-    # Larghezza colonne automatica
     for col in ws_tx.columns:
         max_len = max(len(str(c.value or "")) for c in col)
         ws_tx.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
 
-    # ── Foglio 2: Conti ───────────────────────────────────────────────────
     ws_conti = wb.create_sheet("Conti")
-    headers_conti = ["Nome Conto", "Categoria"]
-    for col, h in enumerate(headers_conti, 1):
+    for col, h in enumerate(["Nome Conto", "Categoria"], 1):
         cell = ws_conti.cell(row=1, column=col, value=h)
         cell.font = header_font
         cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
 
     for row, a in enumerate(db.query(Account).order_by(Account.categoria).all(), 2):
         ws_conti.cell(row=row, column=1, value=a.nome_conto)
         ws_conti.cell(row=row, column=2, value=a.categoria)
 
-    # ── Foglio 3: Riepilogo mensile ───────────────────────────────────────
-    ws_riepilogo = wb.create_sheet("Riepilogo Mensile")
-    headers_rip = ["Periodo", "Entrate", "Uscite", "Risparmio"]
-    for col, h in enumerate(headers_rip, 1):
-        cell = ws_riepilogo.cell(row=1, column=col, value=h)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-
-    cashflow = db.query(
-        extract("year", Transazione.data).label("anno"),
-        extract("month", Transazione.data).label("mese"),
-        Transazione.direzione,
-        func.sum(Transazione.importo).label("totale"),
-    ).group_by("anno", "mese", Transazione.direzione)\
-     .order_by("anno", "mese").all()
-
-    mesi = {}
-    for r in cashflow:
-        k = f"{int(r.anno)}-{int(r.mese):02d}"
-        if k not in mesi:
-            mesi[k] = {"entrate": 0, "uscite": 0}
-        if r.direzione == "Entrata":
-            mesi[k]["entrate"] = round(float(r.totale), 2)
-        else:
-            mesi[k]["uscite"] = round(float(r.totale), 2)
-
-    for row, (periodo, dati) in enumerate(sorted(mesi.items()), 2):
-        risparmio = dati["entrate"] - dati["uscite"]
-        ws_riepilogo.cell(row=row, column=1, value=periodo)
-        ws_riepilogo.cell(row=row, column=2, value=dati["entrate"])
-        ws_riepilogo.cell(row=row, column=3, value=dati["uscite"])
-        ws_riepilogo.cell(row=row, column=4, value=risparmio)
-
-    # ── Genera file in memoria e restituisci ──────────────────────────────
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
@@ -280,48 +268,3 @@ def export_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
-
-
-
-
-# ── SALDO PER CONTO ─────────────────────────────────────────────────────────
-
-@app.get("/accounts/saldi")
-def get_saldi(db: Session = Depends(get_db)):
-    accounts = db.query(Account).order_by(Account.categoria, Account.nome_conto).all()
-    risultati = []
-
-    for a in accounts:
-        entrate = db.query(func.sum(Transazione.importo))\
-            .filter(Transazione.account_id == a.id, Transazione.direzione == "Entrata")\
-            .scalar() or 0
-
-        uscite = db.query(func.sum(Transazione.importo))\
-            .filter(Transazione.account_id == a.id, Transazione.direzione == "Uscita")\
-            .scalar() or 0
-
-        saldo = float(entrate) - float(uscite)
-
-        risultati.append({
-            "id": a.id,
-            "nome": a.nome_conto,
-            "categoria": a.categoria,
-            "totale_entrate": round(float(entrate), 2),
-            "totale_uscite": round(float(uscite), 2),
-            "saldo": round(saldo, 2),
-        })
-
-    patrimonio_netto = sum(
-        r["saldo"] for r in risultati
-        if r["categoria"] not in ("debito", "carta di credito")
-    )
-    debiti = sum(
-        r["saldo"] for r in risultati
-        if r["categoria"] in ("debito", "carta di credito")
-    )
-
-    return {
-        "conti": risultati,
-        "patrimonio_netto": round(patrimonio_netto, 2),
-        "totale_debiti": round(debiti, 2),
-    }

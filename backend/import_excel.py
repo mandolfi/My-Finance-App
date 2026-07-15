@@ -13,14 +13,13 @@ CATEGORIA_CONTI = {
         "marco cc risp ingdiba", "marco libretto", "marco portafoglio",
         "linda cc ger", "linda cc ingdiba", "linda cc risp",
         "linda cc risp ingdiba", "linda portafoglio",
-        "conto comune", "conto puntino", "conto virgola",
-        "cassa anna", "tagesgeld",
+        "conto comune", "cassa anna", "tagesgeld",
     ],
     "investimento": [
         "marco investimento", "linda investimento", "linda invest.", "quirion",
     ],
     "carta di credito": [
-        "marco carta credito", "linda carta credito", "american express",
+        "marco carta credito", "linda carta credito", "american express", "conto puntino", "conto virgola"
     ],
     "debito": [
         "marco debito", "mutuo banca", "mutuo papa",
@@ -36,6 +35,8 @@ def get_categoria_conto(nome_norm):
     for cat, nomi in CATEGORIA_CONTI.items():
         if nome_norm in nomi:
             return cat
+    if nome_norm.startswith("app") or nome_norm == "haus":
+        return "immobili"
     return "liquidità"
 
 
