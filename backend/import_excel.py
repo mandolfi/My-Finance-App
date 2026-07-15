@@ -19,10 +19,10 @@ CATEGORIA_CONTI = {
         "marco investimento", "linda investimento", "linda invest.", "quirion",
     ],
     "carta di credito": [
-        "marco carta credito", "linda carta credito", "american express", "conto puntino", "conto virgola"
+        "marco carta credito", "linda carta credito", "american express",
     ],
     "debito": [
-        "marco debito", "mutuo banca", "mutuo papa",
+        "marco debito", "mutuo banca", "mutuo papa", "conto puntino", "conto virgola",
     ],
     "credito verso terzi": [
         "marco crediti a terzi", "marco credito pf",
