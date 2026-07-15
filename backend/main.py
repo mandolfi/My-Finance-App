@@ -280,3 +280,48 @@ def export_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+
+
+# ── SALDO PER CONTO ─────────────────────────────────────────────────────────
+
+@app.get("/accounts/saldi")
+def get_saldi(db: Session = Depends(get_db)):
+    accounts = db.query(Account).order_by(Account.categoria, Account.nome_conto).all()
+    risultati = []
+
+    for a in accounts:
+        entrate = db.query(func.sum(Transazione.importo))\
+            .filter(Transazione.account_id == a.id, Transazione.direzione == "Entrata")\
+            .scalar() or 0
+
+        uscite = db.query(func.sum(Transazione.importo))\
+            .filter(Transazione.account_id == a.id, Transazione.direzione == "Uscita")\
+            .scalar() or 0
+
+        saldo = float(entrate) - float(uscite)
+
+        risultati.append({
+            "id": a.id,
+            "nome": a.nome_conto,
+            "categoria": a.categoria,
+            "totale_entrate": round(float(entrate), 2),
+            "totale_uscite": round(float(uscite), 2),
+            "saldo": round(saldo, 2),
+        })
+
+    patrimonio_netto = sum(
+        r["saldo"] for r in risultati
+        if r["categoria"] not in ("debito", "carta di credito")
+    )
+    debiti = sum(
+        r["saldo"] for r in risultati
+        if r["categoria"] in ("debito", "carta di credito")
+    )
+
+    return {
+        "conti": risultati,
+        "patrimonio_netto": round(patrimonio_netto, 2),
+        "totale_debiti": round(debiti, 2),
+    }
