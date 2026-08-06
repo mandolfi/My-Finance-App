@@ -1,24 +1,30 @@
 import { useState, useEffect } from 'react'
+import CardsRiepilogo from './components/CardsRiepilogo'
+
+const API_URL = 'https://automatic-space-fishstick-676j5r47qj2rwwj-8000.app.github.dev'
 
 function App() {
   const [saldi, setSaldi] = useState(null)
+  const [summary, setSummary] = useState(null)
 
   useEffect(() => {
-    fetch('https://automatic-space-fishstick-676j5r47qj2rwwj-8000.app.github.dev/accounts/saldi')
+    fetch(`${API_URL}/accounts/saldi`)
       .then(res => res.json())
       .then(data => setSaldi(data))
+
+    fetch(`${API_URL}/dashboard/summary`)
+      .then(res => res.json())
+      .then(data => setSummary(data))
   }, [])
 
-  if (!saldi) {
+  if (!saldi || !summary) {
     return <p>Caricamento...</p>
   }
 
   return (
-    <div>
-      <h1>Patrimonio Netto Totale: € {saldi.patrimonio_netto_totale.toLocaleString()}</h1>
-      <p>Patrimonio Liquido: € {saldi.patrimonio_liquido.toLocaleString()}</p>
-      <p>Valore Immobili: € {saldi.valore_immobili.toLocaleString()}</p>
-      <p>Debiti: € {saldi.totale_debiti.toLocaleString()}</p>
+    <div style={{ padding: '32px', fontFamily: 'sans-serif' }}>
+      <h1>Patrimonio</h1>
+      <CardsRiepilogo saldi={saldi} summary={summary} />
     </div>
   )
 }

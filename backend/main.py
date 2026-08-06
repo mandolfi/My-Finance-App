@@ -78,9 +78,11 @@ def get_saldi(db: Session = Depends(get_db)):
 
 @app.get("/dashboard/summary")
 def get_summary(anno: int = None, mese: int = None, db: Session = Depends(get_db)):
-    oggi = date.today()
-    anno = anno or oggi.year
-    mese = mese or oggi.month
+    if anno is None or mese is None:
+        ultima = filtro_reali(db.query(Transazione)).order_by(Transazione.data.desc()).first()
+        riferimento = ultima.data if ultima else date.today()
+        anno = anno or riferimento.year
+        mese = mese or riferimento.month
 
     base = filtro_reali(db.query(Transazione).filter(
         extract("year", Transazione.data) == anno,
