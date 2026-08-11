@@ -179,8 +179,9 @@ def costruisci_tabelle_pulite():
         causale_in_norm = r.causale_entrata.strip().lower() if r.causale_entrata else None
         causale_out_norm = r.causale_uscita.strip().lower() if r.causale_uscita else None
 
-        # Direzione = etichetta per categorizzazione, basata sulla causale
-        # (usata per raggruppare/analizzare, NON per calcolare il saldo)
+        # Direzione basata SOLO sulla causale — mai sul segno dell'importo.
+        # Se non c'è causale, è un trasferimento/movimento: entra nel saldo
+        # del conto ma NON conta come cashflow economico.
         if causale_in_norm and causale_in_norm in entrata_map:
             direzione = "Entrata"
             entrata_id = entrata_map[causale_in_norm].id
@@ -189,14 +190,10 @@ def costruisci_tabelle_pulite():
             direzione = "Uscita"
             entrata_id = None
             uscita_id = uscita_map[causale_out_norm].id
-        elif importo >= 0:
-            direzione = "Entrata"
-            entrata_id = entrata_map["__default__"].id
-            uscita_id = None
         else:
-            direzione = "Uscita"
+            direzione = "Movimento"
             entrata_id = None
-            uscita_id = uscita_map["__default__"].id
+            uscita_id = None
 
         t = Transazione(
             data=data,
