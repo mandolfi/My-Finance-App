@@ -10,10 +10,24 @@
 - Nomi conto: case-insensitive, confronto sempre su `.strip().lower()`
 - Il nome "ufficiale" di un conto è la variante di scrittura più frequente nell'Excel
 
-## Colonna `direzione` (Entrata/Uscita)
-- Usata SOLO per categorizzare/raggruppare (es. "quanto in Necessaria"), MAI per calcolare saldi
-- Determinata da: causale_entrata valorizzata → Entrata; causale_uscita valorizzata → Uscita; altrimenti segno importo decide
-- ATTENZIONE: causale e segno possono essere in disaccordo (storni/rimborsi) — l'importo mantiene sempre il segno vero
+## Colonna `direzione` (Entrata/Uscita/Movimento)
+- Determinata ESCLUSIVAMENTE da quale colonna causale è valorizzata nell'Excel originale:
+  - `causale_entrata` valorizzata → direzione = "Entrata"
+  - `causale_uscita` valorizzata → direzione = "Uscita"
+  - NESSUNA delle due valorizzata → direzione = "Movimento" (trasferimento tra conti propri)
+- MAI dedotta dal segno di `importo` — un trasferimento tocca due conti con segni opposti
+  ma non è né un guadagno né una spesa economica
+- Le righe "Movimento" ESISTONO nella tabella `transazioni` (servono per il saldo dei conti)
+  ma vengono escluse dalle query di cashflow/summary tramite `direzione.in_(["Entrata", "Uscita"])`
+- Errore commesso e corretto: inizialmente il codice faceva "fallback sul segno" quando
+  mancava la causale, gonfiando enormemente Entrate/Uscite mensili con vendite di azioni,
+  trasferimenti tra conti propri, ecc. Corretto in data [oggi] — vedi commit
+  "Fix critico: direzione Entrata/Uscita basata solo su causale, mai sul segno"
+
+## Endpoint cashflow
+- `/dashboard/cashflow?mesi=N` — default 12 mesi, calcolati a ritroso dall'ultima
+  transazione reale disponibile nel DB (non da "oggi" di calendario, che può essere
+  oltre l'ultimo dato importato)
 
 ## Categorie conti
 - liquidità, investimento, carta di credito, debito, immobili
