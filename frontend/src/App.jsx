@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import CardsRiepilogo from './components/CardsRiepilogo'
 import GraficoCashflow from './components/GraficoCashflow'
+import ListaConti from './components/ListaConti'
 
 const API_URL = 'https://automatic-space-fishstick-676j5r47qj2rwwj-8000.app.github.dev'
 
@@ -32,6 +33,7 @@ function App() {
       <h1>Patrimonio</h1>
       <CardsRiepilogo saldi={saldi} summary={summary} />
       <GraficoCashflow dati={cashflow} />
+      <ListaConti saldi={saldi} />
     </div>
   )
 }

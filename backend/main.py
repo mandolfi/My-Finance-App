@@ -112,13 +112,27 @@ def get_summary(anno: int = None, mese: int = None, db: Session = Depends(get_db
 # ── CASHFLOW ULTIMI MESI ─────────────────────────────────────────────────────
 
 @app.get("/dashboard/cashflow")
-def get_cashflow(db: Session = Depends(get_db)):
+def get_cashflow(mesi: int = 12, db: Session = Depends(get_db)):
+    ultima = filtro_reali(db.query(Transazione)).order_by(Transazione.data.desc()).first()
+    riferimento = ultima.data if ultima else date.today()
+
+    # Calcola la data di inizio: N mesi indietro dalla data di riferimento
+    anno_inizio = riferimento.year
+    mese_inizio = riferimento.month - mesi + 1
+    while mese_inizio <= 0:
+        mese_inizio += 12
+        anno_inizio -= 1
+    data_inizio = date(anno_inizio, mese_inizio, 1)
+
     query = filtro_reali(db.query(
         extract("year", Transazione.data).label("anno"),
         extract("month", Transazione.data).label("mese"),
         Transazione.direzione,
         func.sum(Transazione.importo).label("totale"),
-    )).group_by("anno", "mese", Transazione.direzione).order_by("anno", "mese")
+    )).filter(
+        Transazione.data >= data_inizio,
+        Transazione.direzione.in_(["Entrata", "Uscita"]),
+    ).group_by("anno", "mese", Transazione.direzione).order_by("anno", "mese")
 
     cashflow = {}
     for r in query.all():
