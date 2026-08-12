@@ -1,11 +1,16 @@
 function ListaConti({ saldi }) {
-  // Raggruppa i conti per categoria
   const perCategoria = {}
   for (const conto of saldi.conti) {
+    if (Math.abs(conto.saldo) < 0.01) continue // nascondi conti a zero
     if (!perCategoria[conto.categoria]) {
       perCategoria[conto.categoria] = []
     }
     perCategoria[conto.categoria].push(conto)
+  }
+
+  // Ordina i conti dentro ogni categoria per saldo decrescente
+  for (const categoria in perCategoria) {
+    perCategoria[categoria].sort((a, b) => b.saldo - a.saldo)
   }
 
   return (

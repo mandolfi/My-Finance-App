@@ -40,3 +40,30 @@
 - Backend: FastAPI + SQLite, cartella `backend/`
 - Frontend: React + Vite, cartella `frontend/`
 - File chiave: `backend/models.py`, `backend/import_excel.py`, `backend/main.py`
+
+
+## Roadmap funzionalità (backlog prioritizzato)
+
+**Fase 1 — Filtri temporali dashboard**
+- 2a. Recap economico (entrate/uscite/risparmio) per un mese scelto
+- 2b. Recap economico per un anno scelto
+- 2c. Recap economico per tutti gli anni passati (storico completo)
+- 2d. Evoluzione conti finanziari per mese/anno/trimestre
+
+**Fase 2 — CRUD**
+- 2g. Gestione CRUD conti finanziari
+- 2h. Gestione CRUD causali Entrate/Uscite
+
+**Fase 3 — Budgeting**
+- 2i. Budgeting per anno e mese
+
+**Fase 4 — Goals e Cockpit**
+- 2f. Definizione goals economico-finanziari + monitoraggio
+- 2e. Cockpit di dashboard fondamentali (probabilmente si costruisce naturalmente
+  componendo i pezzi delle fasi precedenti)
+
+**Fase 5 — Avanzate**
+- 2j. Inserimento assistito spese base (WhatsApp/chat)
+- 2k. Modello di predizione per i prossimi 10 anni
+
+Stato attuale: Fase 1 in corso.
